@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import FileUpload from './components/FileUpload';
-import PdfViewer from './components/PdfViewer';
+import PdfViewer from './components/pdf-viewer';
 
 export default function Home() {
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
