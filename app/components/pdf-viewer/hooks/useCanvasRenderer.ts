@@ -57,6 +57,7 @@ export function useCanvasRenderer({
 	const cacheCanvasRef = useRef<HTMLCanvasElement | null>(null);
 	const cachedStrokesCountRef = useRef<number>(0);
 	const cachedScaleRef = useRef<number>(scale);
+	const cachedStrokesRef = useRef<Stroke[]>(strokes);
 
 	// Update cache when strokes change (but not during active drawing)
 	useEffect(() => {
@@ -83,13 +84,20 @@ export function useCanvasRenderer({
 			cachedStrokesCountRef.current = 0; // Force full redraw
 		}
 
+		// Check if strokes array changed (e.g., page change)
+		const strokesChanged = cachedStrokesRef.current !== strokes;
+		if (strokesChanged) {
+			cachedStrokesRef.current = strokes;
+			cachedStrokesCountRef.current = 0; // Force full redraw
+		}
+
 		const cacheCtx = cacheCanvas.getContext('2d');
 		if (!cacheCtx) return;
 
 		// Only redraw if strokes changed
-		if (cachedStrokesCountRef.current !== strokes.length) {
-			// If strokes were removed (undo), clear and redraw all
-			if (strokes.length < cachedStrokesCountRef.current) {
+		if (cachedStrokesCountRef.current !== strokes.length || strokesChanged) {
+			// If strokes were removed (undo) or changed entirely, clear and redraw all
+			if (strokes.length < cachedStrokesCountRef.current || strokesChanged) {
 				cacheCtx.clearRect(0, 0, cacheCanvas.width, cacheCanvas.height);
 				strokes.forEach((stroke) => drawStroke(cacheCtx, stroke, scale));
 			} else {
@@ -147,5 +155,5 @@ export function useCanvasRenderer({
 			}
 			ctx.globalAlpha = 1;
 		}
-	}, [canvasRef, currentStroke, scale, selectedColor, selectedLineSize, selectedOpacity]);
+	}, [canvasRef, currentStroke, scale, selectedColor, selectedLineSize, selectedOpacity, strokes]);
 }
