@@ -2,16 +2,16 @@
 
 const PRIMARY_COLORS = [
 	{ name: 'black', value: '#000000' },
-	{ name: 'white', value: '#ffffff' },
 	{ name: 'red', value: '#ef4444' },
+	{ name: 'dark blue', value: '#1e40af' },
 	{ name: 'green', value: '#22c55e' },
-	{ name: 'dark blue', value: '#1e40af' }
+	{ name: 'yellow', value: '#eab308' }
 ];
 
 const EXTRA_COLORS = [
+	{ name: 'white', value: '#ffffff' },
 	{ name: 'orange', value: '#f97316' },
 	{ name: 'purple', value: '#a855f7' },
-	{ name: 'yellow', value: '#eab308' },
 	{ name: 'pink', value: '#ec4899' },
 	{ name: 'cyan', value: '#06b6d4' },
 	{ name: 'blue', value: '#3b82f6' }

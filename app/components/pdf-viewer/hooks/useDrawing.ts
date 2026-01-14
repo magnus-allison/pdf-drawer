@@ -1,20 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect, RefObject } from 'react';
+import { useState, useCallback, useEffect, useRef, RefObject } from 'react';
 import { Point, Stroke } from '../types';
 
 function generateThumbnail(stroke: Stroke): string {
-	if (stroke.points.length < 2) return '';
-
-	const xs = stroke.points.map((p) => p.x);
-	const ys = stroke.points.map((p) => p.y);
-	const minX = Math.min(...xs);
-	const maxX = Math.max(...xs);
-	const minY = Math.min(...ys);
-	const maxY = Math.max(...ys);
-	const padding = stroke.lineWidth;
-	const strokeWidth = maxX - minX + padding * 2;
-	const strokeHeight = maxY - minY + padding * 2;
+	if (stroke.points.length === 0) return '';
 
 	const thumbWidth = 80;
 	const thumbHeight = 60;
@@ -25,33 +15,53 @@ function generateThumbnail(stroke: Stroke): string {
 
 	if (!thumbCtx) return '';
 
-	const scaleX = thumbWidth / strokeWidth;
-	const scaleY = thumbHeight / strokeHeight;
-	const thumbScale = Math.min(scaleX, scaleY, 2);
-
-	const scaledWidth = strokeWidth * thumbScale;
-	const scaledHeight = strokeHeight * thumbScale;
-	const offsetX = (thumbWidth - scaledWidth) / 2;
-	const offsetY = (thumbHeight - scaledHeight) / 2;
-
 	thumbCtx.clearRect(0, 0, thumbWidth, thumbHeight);
-	thumbCtx.beginPath();
 	thumbCtx.globalAlpha = stroke.opacity ?? 1;
-	thumbCtx.strokeStyle = stroke.color;
-	thumbCtx.lineWidth = Math.max(1, stroke.lineWidth * thumbScale);
-	thumbCtx.lineCap = 'round';
-	thumbCtx.lineJoin = 'round';
-	thumbCtx.moveTo(
-		(stroke.points[0].x - minX + padding) * thumbScale + offsetX,
-		(stroke.points[0].y - minY + padding) * thumbScale + offsetY
-	);
-	for (let i = 1; i < stroke.points.length; i++) {
-		thumbCtx.lineTo(
-			(stroke.points[i].x - minX + padding) * thumbScale + offsetX,
-			(stroke.points[i].y - minY + padding) * thumbScale + offsetY
+
+	if (stroke.points.length === 1) {
+		// Draw a centered dot
+		thumbCtx.beginPath();
+		thumbCtx.fillStyle = stroke.color;
+		const radius = Math.min(thumbWidth, thumbHeight) / 4;
+		thumbCtx.arc(thumbWidth / 2, thumbHeight / 2, radius, 0, Math.PI * 2);
+		thumbCtx.fill();
+	} else {
+		const xs = stroke.points.map((p) => p.x);
+		const ys = stroke.points.map((p) => p.y);
+		const minX = Math.min(...xs);
+		const maxX = Math.max(...xs);
+		const minY = Math.min(...ys);
+		const maxY = Math.max(...ys);
+		const padding = stroke.lineWidth;
+		const strokeWidth = maxX - minX + padding * 2;
+		const strokeHeight = maxY - minY + padding * 2;
+
+		const scaleX = thumbWidth / strokeWidth;
+		const scaleY = thumbHeight / strokeHeight;
+		const thumbScale = Math.min(scaleX, scaleY, 2);
+
+		const scaledWidth = strokeWidth * thumbScale;
+		const scaledHeight = strokeHeight * thumbScale;
+		const offsetX = (thumbWidth - scaledWidth) / 2;
+		const offsetY = (thumbHeight - scaledHeight) / 2;
+
+		thumbCtx.beginPath();
+		thumbCtx.strokeStyle = stroke.color;
+		thumbCtx.lineWidth = Math.max(1, stroke.lineWidth * thumbScale);
+		thumbCtx.lineCap = 'round';
+		thumbCtx.lineJoin = 'round';
+		thumbCtx.moveTo(
+			(stroke.points[0].x - minX + padding) * thumbScale + offsetX,
+			(stroke.points[0].y - minY + padding) * thumbScale + offsetY
 		);
+		for (let i = 1; i < stroke.points.length; i++) {
+			thumbCtx.lineTo(
+				(stroke.points[i].x - minX + padding) * thumbScale + offsetX,
+				(stroke.points[i].y - minY + padding) * thumbScale + offsetY
+			);
+		}
+		thumbCtx.stroke();
 	}
-	thumbCtx.stroke();
 	thumbCtx.globalAlpha = 1;
 
 	return thumbnailCanvas.toDataURL('image/png');
@@ -78,6 +88,7 @@ export function useDrawing({
 	const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
 	const [isShiftHeld, setIsShiftHeld] = useState(false);
 	const [startPoint, setStartPoint] = useState<Point | null>(null);
+	const lastPointRef = useRef<Point | null>(null);
 
 	// Track shift key for straight line tool
 	useEffect(() => {
@@ -116,6 +127,7 @@ export function useDrawing({
 			const point = getCanvasCoordinates(e);
 			setStartPoint(point);
 			setCurrentStroke([point]);
+			lastPointRef.current = point;
 		},
 		[selectedColor, getCanvasCoordinates]
 	);
@@ -124,11 +136,25 @@ export function useDrawing({
 		(e: React.MouseEvent<HTMLCanvasElement>) => {
 			if (!isDrawing) return;
 			const point = getCanvasCoordinates(e);
+
+			// For shift-held straight lines, just update end point
 			if (isShiftHeld && startPoint) {
 				setCurrentStroke([startPoint, point]);
-			} else {
-				setCurrentStroke((prev) => [...prev, point]);
+				return;
 			}
+
+			// Throttle point capture - skip points too close to the last one
+			const lastPoint = lastPointRef.current;
+			if (lastPoint) {
+				const dx = point.x - lastPoint.x;
+				const dy = point.y - lastPoint.y;
+				const distSq = dx * dx + dy * dy;
+				// Skip if less than 2 pixels away (reduces points captured during fast movement)
+				if (distSq < 4) return;
+			}
+
+			lastPointRef.current = point;
+			setCurrentStroke((prev) => [...prev, point]);
 		},
 		[isDrawing, getCanvasCoordinates, isShiftHeld, startPoint]
 	);
@@ -137,8 +163,9 @@ export function useDrawing({
 		if (!isDrawing) return;
 		setIsDrawing(false);
 		setStartPoint(null);
+		lastPointRef.current = null;
 
-		if (currentStroke.length >= 2 && selectedColor) {
+		if (currentStroke.length >= 1 && selectedColor) {
 			const newStroke: Stroke = {
 				points: currentStroke,
 				color: selectedColor,

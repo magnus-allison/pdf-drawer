@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import LZString from 'lz-string';
 
 interface Point {
 	x: number;
@@ -88,24 +89,39 @@ function AnnotationPreview({
 
 		// Draw strokes
 		strokes.forEach((stroke) => {
-			if (stroke.points.length < 2) return;
-			ctx.beginPath();
+			if (stroke.points.length === 0) return;
 			ctx.globalAlpha = stroke.opacity ?? 1;
-			ctx.strokeStyle = stroke.color;
-			ctx.lineWidth = Math.max(1, stroke.lineWidth * scale);
-			ctx.lineCap = 'round';
-			ctx.lineJoin = 'round';
-			ctx.moveTo(
-				(stroke.points[0].x - minX) * scale + offsetX,
-				(stroke.points[0].y - minY) * scale + offsetY
-			);
-			for (let i = 1; i < stroke.points.length; i++) {
-				ctx.lineTo(
-					(stroke.points[i].x - minX) * scale + offsetX,
-					(stroke.points[i].y - minY) * scale + offsetY
+
+			if (stroke.points.length === 1) {
+				// Draw a dot
+				ctx.beginPath();
+				ctx.fillStyle = stroke.color;
+				ctx.arc(
+					(stroke.points[0].x - minX) * scale + offsetX,
+					(stroke.points[0].y - minY) * scale + offsetY,
+					Math.max(2, (stroke.lineWidth * scale) / 2),
+					0,
+					Math.PI * 2
 				);
+				ctx.fill();
+			} else {
+				ctx.beginPath();
+				ctx.strokeStyle = stroke.color;
+				ctx.lineWidth = Math.max(1, stroke.lineWidth * scale);
+				ctx.lineCap = 'round';
+				ctx.lineJoin = 'round';
+				ctx.moveTo(
+					(stroke.points[0].x - minX) * scale + offsetX,
+					(stroke.points[0].y - minY) * scale + offsetY
+				);
+				for (let i = 1; i < stroke.points.length; i++) {
+					ctx.lineTo(
+						(stroke.points[i].x - minX) * scale + offsetX,
+						(stroke.points[i].y - minY) * scale + offsetY
+					);
+				}
+				ctx.stroke();
 			}
-			ctx.stroke();
 			ctx.globalAlpha = 1;
 		});
 	}, [strokes, width, height]);
@@ -131,6 +147,24 @@ function AnnotationPreview({
 	);
 }
 
+// Decompress stored data (handles both compressed and uncompressed)
+function decompressFromStorage(compressed: string) {
+	try {
+		const decompressed = LZString.decompressFromUTF16(compressed);
+		if (decompressed) {
+			return JSON.parse(decompressed);
+		}
+	} catch {
+		// Fall through to try raw JSON
+	}
+	// Try parsing as uncompressed JSON (for backwards compatibility)
+	try {
+		return JSON.parse(compressed);
+	} catch {
+		return null;
+	}
+}
+
 function loadSavedAnnotations(): SavedAnnotation[] {
 	if (typeof window === 'undefined') return [];
 
@@ -142,7 +176,11 @@ function loadSavedAnnotations(): SavedAnnotation[] {
 			try {
 				const data = localStorage.getItem(key);
 				if (data) {
-					const parsed = JSON.parse(data);
+					const parsed = decompressFromStorage(data);
+					if (!parsed) {
+						console.warn('Failed to decompress annotation:', key);
+						continue;
+					}
 					// Extract filename from key: pdf-annotations-{filename}-{size}
 					const match = key.match(/^pdf-annotations-(.+)-\d+$/);
 					const fileName = match ? match[1] : key;

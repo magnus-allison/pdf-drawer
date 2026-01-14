@@ -31,7 +31,7 @@ export async function downloadPdfWithAnnotations(file: File, annotations: Record
 			const { height } = page.getSize();
 
 			for (const strokeData of strokes) {
-				if (strokeData.points.length < 2) continue;
+				if (strokeData.points.length === 0) continue;
 
 				// Parse color from hex
 				const hexColor = strokeData.color.replace('#', '');
@@ -40,7 +40,17 @@ export async function downloadPdfWithAnnotations(file: File, annotations: Record
 				const b = parseInt(hexColor.substring(4, 6), 16) / 255;
 				const opacity = strokeData.opacity ?? 1;
 
-				if (opacity < 1) {
+				if (strokeData.points.length === 1) {
+					// Draw a dot (circle)
+					const point = strokeData.points[0];
+					page.drawCircle({
+						x: point.x,
+						y: height - point.y,
+						size: strokeData.lineWidth / 2,
+						color: rgb(r, g, b),
+						opacity: opacity
+					});
+				} else if (opacity < 1) {
 					// For semi-transparent strokes, use graphics state with operators
 					// to draw the entire path at once
 					const gsKey = PDFName.of(`GS_${pageIndex}_${Math.random().toString(36).substr(2, 9)}`);
